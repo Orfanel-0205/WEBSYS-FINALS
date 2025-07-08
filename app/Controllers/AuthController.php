@@ -1,41 +1,59 @@
 <?php
 
 namespace App\Controllers;
-use App\Models\UserModel;
 
-class AuthController extends BaseController
+use App\Models\UserModel;
+use CodeIgniter\Controller;
+use Config\Auth;
+
+class AuthController extends Controller
 {
-    public function loginForm()
+    protected $auth;
+    protected $userModel;
+
+    public function __construct()
     {
-        return view('login_view');
+        $this->auth = new Auth();
+        $this->userModel = new UserModel();
+        helper(['form', 'url', 'security']);
     }
 
     public function login()
     {
-        $session = session();
-        $model = new UserModel();
+        if ($this->request->getMethod() === 'post') {
+            $rules = [
+                'email' => 'required|valid_email',
+                'password' => 'required|min_length[8]',
+            ];
 
-        $username = $this->request->getPost('username');
-        $password = md5($this->request->getPost('password'));
+            if ($this->validate($rules)) {
+                $email = $this->request->getPost('email');
+                $password = $this->request->getPost('password');
+                $user = $this->userModel->where('email', $email)->first();
 
-        $user = $model->where('username', $username)
-                      ->where('password', $password)
-                      ->first();
-
-        if ($user) {
-            $session->set([
-                'username' => $user['username'],
-                'logged_in' => true
-            ]);
-            return redirect()->to('/dashboard');
-        } else {
-            return redirect()->back()->with('error', 'Invalid credentials');
+                if ($user && password_verify($password, $user['password'])) {
+                    $session = session();
+                    $session->set([
+                        'user_id' => $user['id'],
+                        'role' => $user['role'],
+                        'is_logged_in' => true
+                    ]);
+                    return redirect()->to($this->auth->afterLoginRoute);
+                } else {
+                    return redirect()->back()->with('error', 'Invalid credentials');
+                }
+            } else {
+                return redirect()->back()->with('errors', $this->validator->getErrors());
+            }
         }
+
+        return view('auth/login');
     }
 
     public function logout()
     {
-        session()->destroy();
-        return redirect()->to('/login');
+        $session = session();
+        $session->destroy();
+        return redirect()->to($this->auth->loginRoute);
     }
 }
